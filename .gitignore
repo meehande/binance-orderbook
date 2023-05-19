@@ -1,0 +1,74 @@
+# Python
+*.py[cod]
+__pycache__
+.pytest_cache
+**/.DS_Store
+
+# Package artifacts
+*.egg-info
+*.tar.gz
+
+# Environment secrets
+.env
+.env.*
+
+# Configurations
+/pipeline/configs
+
+# Main setup.py
+/setup.py
+
+# mypy
+.mypy_cache
+
+# vscode
+.vscode
+
+# coverage reports
+.coverage
+
+.mypy_cache/
+
+# Testing
+test.db
+
+# scrappy roughwork code
+scratch
+/scratch.html
+
+# pycharm
+.idea
+venv
+
+# sqllite databases
+*.db
+services/archive/*/db
+
+# documentation debugging
+site/*
+
+# OS X
+.DS_Store
+
+# pyenv
+.python-version
+
+# Deployment files
+build/*
+dist/*
+*.egg
+**/build/*
+**/dist/*
+**/*.egg-*
+
+# pages
+public
+
+# Javascript
+node_modules/
+bundle.js
+bundle.js.LICENSE.txt
+
+# data dirs
+data/
+
