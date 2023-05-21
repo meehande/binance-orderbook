@@ -19,7 +19,6 @@ def top_ask():
     return (Decimal(9.054), Decimal(6))
 
 
-
 @pytest.fixture
 def asks(top_ask):
     return [(Decimal(9.453),Decimal(7)), top_ask, (Decimal(9.234),Decimal(10))]

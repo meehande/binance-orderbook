@@ -94,11 +94,12 @@ class OrderBookManager:
     async def _compare_snapshot(self, message):
         if self._snapshot is None:
             self._snapshot = await self.fetch_snapshot()
-        
+
         last_update_id, bids, asks = self._snapshot
 
         U = message['U'] # id of first update
         u = message['u'] # id of last update
+        import pdb; pdb.set_trace()
         
         if U > last_update_id:
             logger.debug(f"Snapshot before stream, refetch: U:{U}, u:{u}, last_update_id:{last_update_id}")
@@ -107,7 +108,7 @@ class OrderBookManager:
             # todo: have a counter for this, if it happens too many times, skip message
 
         elif u < last_update_id:
-            logger.debug(f"Snapshot after message, skipping:  U:{U}, u:{u}, last_update_id:{last_update_id}")
+            logger.debug(f"Message before snapshot, skipping:  U:{U}, u:{u}, last_update_id:{last_update_id}")
             raise SkipMessage()
         
         elif( U <= last_update_id + 1) and (u >= last_update_id + 1):
