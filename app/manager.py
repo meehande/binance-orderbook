@@ -2,6 +2,7 @@ import asyncio
 import datetime as dt
 from decimal import Decimal
 from loguru import logger
+from typing import Iterable, Union
 from app.listener import Listener
 from app.snapshot import Snapshotter
 from app.orderbook import OrderBook
@@ -9,12 +10,12 @@ from app.exceptions import MessageOutOfSyncError, SkipMessage
 
 
 class OrderBookManager:
-    def __init__(self, symbol: str, buffer, listener_type: Listener, snapshotter: Snapshotter) -> None:
+    def __init__(self, symbol: str, buffer, listener: Listener, snapshotter: Snapshotter) -> None:
         self._symbol = symbol
         self._orderbook = OrderBook()
 
         self._buffer = buffer
-        self._listener = listener_type(symbol, self._buffer)
+        self._listener = listener
         self._snapshotter = snapshotter
         self._snapshot = None
         self._period = 5
@@ -32,6 +33,13 @@ class OrderBookManager:
 
     async def fetch_snapshot(self):
         return await self._snapshotter.fetch_latest(self._symbol)
+    
+    def reset_state(self):
+        # todo: should the orderbook be reset or no..?
+        self._orderbook = OrderBook()
+        self._snapshot = None
+        self._last_seen_id = 0
+        self._is_first_message = True
 
     async def publish_orderbook(self):
         logger.info(f"TS, Top Bid, Top Ask")
@@ -44,17 +52,20 @@ class OrderBookManager:
                 continue
 
     async def process_stream(self):
-        # messages have been buffered
+        # messages have been buffered from listener
         while True:
             try:
                 logger.debug(f"waiting for message from queue")
                 message = await self._buffer.get()
                 logger.debug(f"Received message from queue: {message['U']}")
                 await self._handle_message(message) 
-                
+
             except MessageOutOfSyncError:
+                import pdb; pdb.set_trace()
                 logger.debug(f"Message out of sync... restart with new snapshot??")
-                
+                self.reset_state()
+                # todo: reprocess the message / put back onto queue at front
+
             except asyncio.TimeoutError:
                 logger.warning(f"Timeout error received waiting for message from queue")
                 continue
@@ -83,7 +94,6 @@ class OrderBookManager:
         
         self._update_orderbook(message['u'], message['b'], message['a'])
         self._last_seen_id = message['u']
-
 
     async def _compare_snapshot(self, message):
         if self._snapshot is None:
@@ -116,7 +126,7 @@ class OrderBookManager:
        
         raise NotImplementedError(f"Unexpected - U:{U}, u:{u}, last_update_id:{last_update_id}")
 
-    def _update_orderbook(self, last_update_id, bids, asks):
+    def _update_orderbook(self, last_update_id: int, bids: Iterable[Iterable[Union[str, int]]], asks: Iterable[Iterable[Union[str, int]]]):
         for bid in bids:
             # price, quantity
             price, quantity = [Decimal(x) for x in bid]

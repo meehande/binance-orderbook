@@ -1,8 +1,7 @@
 import pytest
 from app.listener import Listener
-import os
-import json
-import pandas as pd
+from decimal import Decimal
+import numpy as np
 from app.snapshot import Snapshotter
 from app.manager import OrderBookManager
 from app.exceptions import MessageOutOfSyncError, SkipMessage
@@ -14,32 +13,99 @@ def order_book_manager():
 
 
 @pytest.fixture
-def ordered_stream(sample_stream_message):
+def ordered_stream(sample_stream_message, expected_stream_tob):
     second = {
         "U": sample_stream_message['u'] + 1,
         "u": sample_stream_message['u'] + 5,
-        'b': [["26971.21000000", "0.18092000"],
-            ["26971.16000000", "0.00371000"],
-            ["26970.63000000", "0.25399000"],],
+        'b': [[Decimal("26971.21000000"), Decimal("0.18092000")],
+            [Decimal("26971.16000000"), Decimal("0.00371000")],
+            [Decimal("26970.63000000"), Decimal("0.25399000")],],
         'a': [
-            ["26968.99000000", "0.01000000"],
-            ["26969.27000000", "0.00185000"],
+            [Decimal("26968.99000000"), Decimal("0.01000000")],
+            [Decimal("26969.27000000"), Decimal("0.00185000")],
         ]
-
     }
+   
+    bids = np.vstack([np.array(second['b']), expected_stream_tob[0]])
+    asks = np.vstack([np.array(second['a']), expected_stream_tob[1]])
+    second_tob = tuple(bids[np.argmax(bids.T[0])]), tuple(asks[np.argmin(asks.T[0])])
+    
     third = {
         "U": sample_stream_message['u'] + 6,
         "u": sample_stream_message['u'] + 10,
-        'b': [["26971.21000000", "0.00000000"],
-            ["26970.63000000", "0.24900000"],],
+        'b': [[Decimal("26971.21000000"), Decimal("0.00000000")],
+            [Decimal("26970.63000000"), Decimal("0.24900000")],],
         'a': [
-            ["26968.99000000", "0.01000000"],
-            ["26969.27000000", "0.00185000"],
+            [Decimal("26968.99000000"), Decimal("0.01000000")],
+            [Decimal("26969.27000000"), Decimal("0.00185000")],
         ]
 
     }
-    return [sample_stream_message, second, third]
+    bids = np.vstack([np.array(third['b']), bids])
+    asks = np.vstack([np.array(third['a']), asks])
+    third_tob = tuple(bids[np.argmax(bids.T[0])]), tuple(asks[np.argmin(asks.T[0])])
 
+    stream_with_tob = [
+        (sample_stream_message, expected_stream_tob),
+        (second, second_tob),
+        (third, third_tob)
+    ]
+
+    return stream_with_tob
+
+
+@pytest.fixture
+def second_snapshot(sample_snapshot, sample_stream_message):
+    later_snapshot = (
+        sample_stream_message['u'] + 17,
+        sample_snapshot[1],
+        sample_snapshot[2],
+    )
+
+    return later_snapshot
+
+
+@pytest.fixture
+def unordered_stream(sample_stream_message, expected_stream_tob):
+    second = {
+        "U": sample_stream_message['u'] + 5,
+        "u": sample_stream_message['u'] + 10,
+        'b': [[Decimal("26971.21000000"), Decimal("0.18092000")],
+            [Decimal("26971.16000000"), Decimal("0.00371000")],
+            [Decimal("26970.63000000"), Decimal("0.25399000")],],
+        'a': [
+            [Decimal("26968.99000000"), Decimal("0.01000000")],
+            [Decimal("26969.27000000"), Decimal("0.00185000")],
+        ]
+    }
+   
+    bids = np.vstack([np.array(second['b']), expected_stream_tob[0]])
+    asks = np.vstack([np.array(second['a']), expected_stream_tob[1]])
+    second_tob = tuple(bids[np.argmax(bids.T[0])]), tuple(asks[np.argmin(asks.T[0])])
+    
+    third = {
+        "U": sample_stream_message['u'] + 15,
+        "u": sample_stream_message['u'] + 19,
+        'b': [[Decimal("26971.21000000"), Decimal("0.00000000")],
+            [Decimal("26970.63000000"), Decimal("0.24900000")],],
+        'a': [
+            [Decimal("26968.99000000"), Decimal("0.01000000")],
+            [Decimal("26969.27000000"), Decimal("0.00185000")],
+        ]
+
+    }
+    bids = np.vstack([np.array(third['b']), bids])
+    asks = np.vstack([np.array(third['a']), asks])
+    third_tob = tuple(bids[np.argmax(bids.T[0])]), tuple(asks[np.argmin(asks.T[0])])
+
+
+    stream_with_tob = [
+        (sample_stream_message, expected_stream_tob),
+        (second, second_tob),
+        (third, third_tob)
+    ]
+
+    return stream_with_tob
 
 
 @pytest.mark.asyncio
@@ -113,8 +179,6 @@ async def test__handle_message(
 
     assert order_book_manager._last_seen_id == sample_stream_message["u"]
 
-    # todo: check ob has top bid/ask incorporating the streamed messasge
-
     unordered_message = {
         **sample_stream_message,
         "U": sample_stream_message["u"] + 3,
@@ -125,7 +189,7 @@ async def test__handle_message(
 
 
 @pytest.mark.asyncio
-async def test_process_stream(mocker, ordered_stream):
+async def test__handle_message_ordered_stream(mocker, order_book_manager, sample_snapshot, ordered_stream):
     """
     patch snapshot + handle_message + buffer
     1. raise out of bounds
@@ -146,42 +210,131 @@ async def test_process_stream(mocker, ordered_stream):
     3. all different exceptions raised ?
 
     """
-    #todo: mock async queue / add the items to the queue?
-    for message in ordered_stream:
-        await order_book_manager._buffer.put(message)
-        # todo: how to make it read three and then stop
+    mocker.patch.object(
+        OrderBookManager, "fetch_snapshot", return_value=sample_snapshot
+    )
 
-    mock_buffer = mocker.object.patch(OrderBookManager, )
+    for message, expected_tob in ordered_stream:
+        await order_book_manager._handle_message(message)
+        assert expected_tob[0] == order_book_manager._orderbook.top_bid()
+        assert expected_tob[1] == order_book_manager._orderbook.top_ask()
 
-
-def test__update_orderbook():
     """
-    1. removes levels 
-    2. adds levels
-    3. only bids
-    4. only asks
-    5. remove levels that don't exist
+    1.
+    tb (Decimal('27095.09000000'), Decimal('11.30847000'))
+    ta (Decimal('26970.22000000'), Decimal('9.09544000'))
+    2.
+    tb: (Decimal('27095.09000000'), Decimal('11.30847000'))
+    ta: (Decimal('26968.99000000'), Decimal('0.01000000'))
+    3.
+    ta: (Decimal('26968.99000000'), Decimal('0.01000000'))
+    tb: (Decimal('27095.09000000'), Decimal('11.30847000'))
     """
-    pass
-
-"""
-TODO: 
-- finish test cases for manager
-- write additional restart code
-- tests for listener
-- readme
-
-- fix how orderman instantiated (listener + snapshotter params)
-
-- further steps / critiques
-    -> proper managed structure for the buffer (deal with fullness etc)
-
-- check logging is good
--> can do timing 
--> request id
--> parsable for audit ??
--> levelled appropriately
 
 
-- malformatted data -> exception for this / how to handle
-"""
+@pytest.mark.asyncio
+async def test__handle_message_unordered_stream(mocker, order_book_manager, sample_snapshot, unordered_stream, second_snapshot):
+    mocker.patch.object(
+        OrderBookManager, "fetch_snapshot", side_effect=[sample_snapshot, second_snapshot]
+    )
+
+    message, expected_tob = unordered_stream[0]
+    await order_book_manager._handle_message(message)
+    assert expected_tob[0] == order_book_manager._orderbook.top_bid()
+    assert expected_tob[1] == order_book_manager._orderbook.top_ask()
+
+    message, _ = unordered_stream[1]
+   
+    with pytest.raises(MessageOutOfSyncError):
+        await order_book_manager._handle_message(message)
+
+    assert expected_tob[0] == order_book_manager._orderbook.top_bid()
+    assert expected_tob[1] == order_book_manager._orderbook.top_ask()
+
+    order_book_manager.reset_state()
+    
+    message, expected_tob = unordered_stream[2]
+
+    await order_book_manager._handle_message(message)
+    assert expected_tob[0] == order_book_manager._orderbook.top_bid()
+    assert expected_tob[1] == order_book_manager._orderbook.top_ask()
+
+
+def test__update_orderbook(order_book_manager):
+    # str values
+    order_book_manager._update_orderbook(
+        last_update_id=1,
+        bids = [
+            ["26971.21000000", "0.18092000"],
+            ["26972.02700000", "0.01792000"],
+        ],
+        asks = [
+            ["26969.12300000", "0.28004000"],
+            ["26969.87000000", "0.01781000"],
+        ]
+    )
+    assert order_book_manager._orderbook.top_bid() == (Decimal("26972.02700000"), Decimal("0.01792000"))
+    assert order_book_manager._orderbook.top_ask() == (Decimal("26969.12300000"), Decimal("0.28004000"))
+
+    # float values -> converted to decimal
+    order_book_manager._update_orderbook(
+        last_update_id=1,
+        bids = [
+            [26972.21000000, 0.18092000],
+        ],
+        asks = [
+            [26968.12300000, 0.28004000],
+        ]
+    )
+    
+    assert order_book_manager._orderbook.top_bid() == pytest.approx((Decimal("26972.21000000"), Decimal("0.18092000")))
+    assert order_book_manager._orderbook.top_ask() == pytest.approx((Decimal("26968.12300000"), Decimal("0.28004000")))
+
+    # remove levels that exist
+    order_book_manager._update_orderbook(
+        last_update_id=1,
+        bids = [
+            ["26971.21000000", "0.00000000"],
+            ["26969.87000000", "0.01781000"],
+        ],
+        asks = [
+            ["26969.12300000", "0.00000000"],
+            ["26969.87000000", "0.01781000"],
+        ]
+    )
+
+    assert Decimal("26971.21000000") not in order_book_manager._orderbook._bids.keys()
+    assert Decimal("26969.12300000") not in order_book_manager._orderbook._asks.keys()
+
+    # remove levels that don't exist
+    assert Decimal("30000.21000000") not in order_book_manager._orderbook._bids.keys()
+    assert Decimal("30000.12300000") not in order_book_manager._orderbook._asks.keys()
+
+    order_book_manager._update_orderbook(
+        last_update_id=1,
+        bids = [
+            ["30000.21000000", "0.00000000"],
+        ],
+        asks = [
+            ["30000.12300000", "0.00000000"],
+        ]
+    )
+
+    assert Decimal("30000.21000000") not in order_book_manager._orderbook._bids.keys()
+    assert Decimal("30000.12300000") not in order_book_manager._orderbook._asks.keys()
+
+     # only update bids
+    order_book_manager._update_orderbook(
+        last_update_id=1,
+        bids = [
+            ["30000.21000000", "0.10000000"],
+        ],
+        asks = [
+        ]
+
+    )
+
+    assert order_book_manager._orderbook._bids[Decimal("30000.21000000")] == Decimal("0.10000000")
+    assert Decimal("30000.12300000") not in order_book_manager._orderbook._asks.keys()
+
+

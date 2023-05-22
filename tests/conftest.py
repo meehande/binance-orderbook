@@ -1,3 +1,4 @@
+from decimal import Decimal
 import pytest
 import os
 import json
@@ -113,3 +114,18 @@ def sample_stream_message(sample_snapshot_message):
             ["29880.00000000", "9.39053000"],
         ],
     }
+
+
+@pytest.fixture
+def expected_stream_tob(sample_stream_message, sample_snapshot_message):
+    snapshot_bids = pd.DataFrame(sample_snapshot_message["bids"], columns=["price", "quantity"])
+    stream_bids = pd.DataFrame(sample_stream_message["b"], columns=["price", "quantity"])
+    bids = pd.concat([stream_bids, snapshot_bids, ], sort=False).groupby("price").first().reset_index()
+    top_bid = tuple(Decimal(d) for d in bids.sort_values("price", ascending=False).head(1).values[0])
+
+    snapshot_asks = pd.DataFrame(sample_snapshot_message["asks"], columns=["price", "quantity"])
+    stream_asks = pd.DataFrame(sample_stream_message["a"], columns=["price", "quantity"])
+    asks = pd.concat([stream_asks, snapshot_asks, ], sort=False).groupby("price").first().reset_index()
+    top_ask = tuple(Decimal(d) for d in asks.sort_values("price", ascending=True).head(1).values[0])
+
+    return top_bid, top_ask

@@ -34,7 +34,7 @@ class Listener:
                     break
                 except websockets.ConnectionClosedError:
                     logger.info("Connection closed")
-                    # should reconnect here
+                    # todo: should reconnect here
                 except Exception as e:
                     logger.error(f"Unexpected error: {e}")
                     continue
