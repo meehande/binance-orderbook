@@ -5,7 +5,7 @@ from loguru import logger
 from app.listener import Listener
 from app.snapshot import Snapshotter
 from app.orderbook import OrderBook
-from app.exceptions import SnapshotOutOfBoundsError, MessageOutOfSyncError, SkipMessage
+from app.exceptions import MessageOutOfSyncError, SkipMessage
 
 
 class OrderBookManager:
@@ -19,7 +19,6 @@ class OrderBookManager:
         self._snapshot = None
         self._period = 5
         self._is_first_message = True
-        self._last_update_id = 0
         self._last_seen_id = 0
 
     async def run(self):
@@ -31,10 +30,8 @@ class OrderBookManager:
     async def buffer_stream(self):
         await self._listener.run()
 
-
     async def fetch_snapshot(self):
         return await self._snapshotter.fetch_latest(self._symbol)
-
 
     async def publish_orderbook(self):
         logger.info(f"TS, Top Bid, Top Ask")
@@ -54,10 +51,7 @@ class OrderBookManager:
                 message = await self._buffer.get()
                 logger.debug(f"Received message from queue: {message['U']}")
                 await self._handle_message(message) 
-            except SnapshotOutOfBoundsError:
-                logger.debug(f"Snapshot out of bounds, resetting")
-                self._snapshot = None 
-
+                
             except MessageOutOfSyncError:
                 logger.debug(f"Message out of sync... restart with new snapshot??")
                 
@@ -93,18 +87,18 @@ class OrderBookManager:
 
     async def _compare_snapshot(self, message):
         if self._snapshot is None:
+           
             self._snapshot = await self.fetch_snapshot()
 
         last_update_id, bids, asks = self._snapshot
-
         U = message['U'] # id of first update
         u = message['u'] # id of last update
-        import pdb; pdb.set_trace()
         
         if U > last_update_id:
             logger.debug(f"Snapshot before stream, refetch: U:{U}, u:{u}, last_update_id:{last_update_id}")
             self._snapshot = None
             await self._compare_snapshot(message)
+            return
             # todo: have a counter for this, if it happens too many times, skip message
 
         elif u < last_update_id:
@@ -119,6 +113,7 @@ class OrderBookManager:
             return
         
         logger.warning(f"Unexpected scenario - U:{U}, u:{u}, last_update_id:{last_update_id}")
+       
         raise NotImplementedError(f"Unexpected - U:{U}, u:{u}, last_update_id:{last_update_id}")
 
     def _update_orderbook(self, last_update_id, bids, asks):

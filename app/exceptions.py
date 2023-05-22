@@ -1,8 +1,4 @@
 
-
-class SnapshotOutOfBoundsError(Exception):
-    pass
-
 class MessageOutOfSyncError(Exception):
     pass
 
