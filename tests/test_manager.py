@@ -190,26 +190,7 @@ async def test__handle_message(
 
 @pytest.mark.asyncio
 async def test__handle_message_ordered_stream(mocker, order_book_manager, sample_snapshot, ordered_stream):
-    """
-    patch snapshot + handle_message + buffer
-    1. raise out of bounds
-    2. raise out of sync
-        -> implement what to do in this case too!!
-        -> restart?
-
-    3. timeout error
-    4. skip message error
-
-
-    - create sequence of messages in order
-    1. orderbook gets updated on each message (2-3 messages)
-
-    same sequence, but out of order
-    2. message out of sync raises
-
-    3. all different exceptions raised ?
-
-    """
+   
     mocker.patch.object(
         OrderBookManager, "fetch_snapshot", return_value=sample_snapshot
     )
@@ -218,18 +199,6 @@ async def test__handle_message_ordered_stream(mocker, order_book_manager, sample
         await order_book_manager._handle_message(message)
         assert expected_tob[0] == order_book_manager._orderbook.top_bid()
         assert expected_tob[1] == order_book_manager._orderbook.top_ask()
-
-    """
-    1.
-    tb (Decimal('27095.09000000'), Decimal('11.30847000'))
-    ta (Decimal('26970.22000000'), Decimal('9.09544000'))
-    2.
-    tb: (Decimal('27095.09000000'), Decimal('11.30847000'))
-    ta: (Decimal('26968.99000000'), Decimal('0.01000000'))
-    3.
-    ta: (Decimal('26968.99000000'), Decimal('0.01000000'))
-    tb: (Decimal('27095.09000000'), Decimal('11.30847000'))
-    """
 
 
 @pytest.mark.asyncio

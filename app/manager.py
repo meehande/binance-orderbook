@@ -128,16 +128,17 @@ class OrderBookManager:
 
     def _update_orderbook(self, last_update_id: int, bids: Iterable[Iterable[Union[str, int]]], asks: Iterable[Iterable[Union[str, int]]]):
         for bid in bids:
-            # price, quantity
+            
             price, quantity = [Decimal(x) for x in bid]
+            
             if quantity == 0:
                 self._orderbook.remove_bid(price)
             else:
                 self._orderbook.add_or_update_bid(price, quantity)
 
         for ask in asks:
-            # price, quantity
             price, quantity = [Decimal(x) for x in ask]
+
             if quantity == 0:
                 self._orderbook.remove_ask(price)
             else:
@@ -145,31 +146,6 @@ class OrderBookManager:
         
         self._orderbook._last_update_id = last_update_id
        
-
-        """
-    From the binance docs: 
-    How to manage a local order book correctly
-
-1. Open a stream to wss://stream.binance.com:9443/ws/bnbbtc@depth.
-
-2. Buffer the events you receive from the stream.
-
-3. Get a depth snapshot from https://api.binance.com/api/v3/depth?symbol=BNBBTC&limit=1000 .
-
-4. Drop any event where u is <= lastUpdateId in the snapshot.
-
-5. The first processed event should have U <= lastUpdateId+1 AND u >= lastUpdateId+1.
-
-6. While listening to the stream, each new event's U should be equal to the previous event's u+1.
--> if not, what? go back to getting a snapshot and acting like a restart
-
-The data in each event is the absolute quantity for a price level.
-
-7. If the quantity is 0, remove the price level.
-
-Receiving an event that removes a price level that is not in your local order book can happen and is normal.
-    """
-
 
 
 
